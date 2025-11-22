@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <mpi.h>
 
 void srandom (unsigned seed);
 double dboard (int darts);
@@ -18,17 +19,30 @@ int main (int argc, char *argv[])
 
   srandom (0);
 
+  int rank, value, size;
   avepi = 0;
+  pi = 0;
+
+  MPI_Init(&argc, &argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
   for (i = 0; i < ROUNDS; i++) {
     pi = dboard(DARTS);
 
     /* Master calculates the average value of pi over all iterations */
-    avepi = ((avepi * i) + pi)/(i + 1); 
-    printf("   After %8d throws, average value of pi = %10.8f\n",
-           (DARTS * (i + 1)),avepi);
+    MPI_Reduce(&pi, &pisum, 1, MPI_DOUBLE, MPI_SUM, MASTER, MPI_COMM_WORLD);
+
+    if (rank == MASTER) {
+        double ave_round = pisum / size;
+        avepi = ((avepi * i) + ave_round)/(i + 1); 
+        printf("   After %8d throws, average value of pi = %10.8f\n",
+               (DARTS * (i + 1)),avepi);
+    }
 
   } 
 
+  MPI_Finalize();
   return 0;
 }
 
