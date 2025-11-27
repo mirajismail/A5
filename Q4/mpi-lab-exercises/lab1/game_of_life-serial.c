@@ -9,6 +9,7 @@ serial version
 #include <stdio.h>
 
 #include <stdlib.h>
+#include <mpi.h>
 
 #define NI 200        /* array sizes */
 
@@ -22,8 +23,30 @@ int main(int argc, char *argv[])
   int **old, **new;  
   float x;
 
-  /* allocate arrays */
+  MPI_Init(&argc, &argv);
 
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  if (size != 2 && rank == 0) {
+    printf("exactly 2 MPI processes required.\n");
+  }
+
+
+
+  int istart, iend;
+
+  if (rank == 0) {
+      istart = 1;
+      iend = NI / 2;
+  }
+  else {
+      istart = NI / 2 + 1;
+      iend = NI;
+  }
+
+  /* allocate arrays */
   ni = NI + 2;  /* add 2 for left and right ghost cells */
   nj = NJ + 2;
   old = malloc(ni*sizeof(int*));
@@ -70,6 +93,16 @@ int main(int argc, char *argv[])
       old[NI+1][j] = old[1][j];
     }
 
+
+    /* exchange ghost rows between rank 0 and 1 */
+    if (rank == 0) {
+        MPI_Send(old[iend],     nj, MPI_INT, 1, 0, MPI_COMM_WORLD);
+        MPI_Recv(old[iend+1],   nj, MPI_INT, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    } else {
+        MPI_Send(old[istart],   nj, MPI_INT, 0, 1, MPI_COMM_WORLD);
+        MPI_Recv(old[istart-1], nj, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
+
     for(i=1; i<=NI; i++){
       for(j=1; j<=NJ; j++){
         im = i-1;
@@ -113,7 +146,16 @@ int main(int argc, char *argv[])
       isum = isum + new[i][j];
     }
   }
-  printf("\nNumber of live cells = %d\n", isum);
 
+
+  /* reduce to rank 0 */
+  int total = 0;
+  MPI_Reduce(&isum, &total, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+  if (rank == 0) {
+    printf("\nNumber of live cells = %d\n", isum);
+  }
+
+  MPI_Finalize();
   return 0;
 }
