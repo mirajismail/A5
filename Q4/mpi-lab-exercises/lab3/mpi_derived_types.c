@@ -40,59 +40,96 @@ typedef struct {
 
 
 void stl_read(const char *fname, stl_model_t *model) {
-  FILE *fp;
-  int pe_size, pe_rank;
+    MPI_File fh;
+    MPI_Datatype MPI_STL_TRI;
+    MPI_Comm comm = MPI_COMM_WORLD;
 
-  MPI_Comm_size(MPI_COMM_WORLD, &pe_size);
-  MPI_Comm_rank(MPI_COMM_WORLD, &pe_rank);  
+    int rank;
+    MPI_Comm_rank(comm, &rank);
 
-  fp = fopen(fname, "r");
+    /* Derived type for one triangle */
+    MPI_Type_contiguous(sizeof(stl_triangle_t), MPI_BYTE, &MPI_STL_TRI);
+    MPI_Type_commit(&MPI_STL_TRI);
 
-  if (pe_rank == 0) printf("Reading STL file: %s\n", fname);
+    /* Open collectively */
+    MPI_File_open(comm, fname, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
 
-  /* Read STL header */
-  fread(model->hdr, sizeof(char), STL_HDR_SIZE, fp);
+    /* 1. Read header */
+    MPI_File_read_at_all(fh, 0,
+                         model->hdr, STL_HDR_SIZE,
+                         MPI_BYTE, MPI_STATUS_IGNORE);
 
-  /* Make sure it's a binary STL file */
-  if (strncmp(model->hdr, "solid", 5) == 0) {
-    fprintf(stderr, "ASCII STL files not supported!\n");
-    exit(-1);
-  }
+    if (strncmp(model->hdr, "solid", 5) == 0) {
+        if (rank == 0) fprintf(stderr, "ASCII STL not supported\n");
+        MPI_Abort(comm, 1);
+    }
 
-  /* Read how many triangles the file contains */
-  fread(&model->n_tri, sizeof(uint32_t), 1, fp);
-  if (pe_rank == 0) printf("Found: %d triangles\n", model->n_tri);
+    /* 2. Read triangle count */
+    MPI_File_read_at_all(fh, STL_HDR_SIZE,
+                         &model->n_tri, 1,
+                         MPI_UNSIGNED, MPI_STATUS_IGNORE);
 
-  /* Allocate memory for triangles, and read them */
-  model->tri = malloc(model->n_tri * sizeof(stl_triangle_t));
-  fread(model->tri, sizeof(stl_triangle_t), model->n_tri, fp);
+    if (rank == 0)
+        printf("Found: %u triangles\n", model->n_tri);
 
-  fclose(fp);
-  if (pe_rank == 0) printf("Done\n");
+    /* Allocate full triangle array on each rank */
+    model->tri = malloc(model->n_tri * sizeof(stl_triangle_t));
 
+    /* 3. Read all triangles collectively */
+    MPI_Offset tri_offset = STL_HDR_SIZE + sizeof(uint32_t);
+
+    MPI_File_read_at_all(fh, tri_offset,
+                         model->tri,
+                         model->n_tri,
+                         MPI_STL_TRI,
+                         MPI_STATUS_IGNORE);
+
+    MPI_File_close(&fh);
+    MPI_Type_free(&MPI_STL_TRI);
+
+    if (rank == 0) printf("Done\n");
 }
 
 void stl_write(const char *fname, stl_model_t *model) {
-  FILE *fp;
-  int pe_size, pe_rank;
+    MPI_File fh;
+    MPI_Datatype MPI_STL_TRI;
+    MPI_Comm comm = MPI_COMM_WORLD;
 
-  MPI_Comm_size(MPI_COMM_WORLD, &pe_size);
-  MPI_Comm_rank(MPI_COMM_WORLD, &pe_rank);
-  
-  fp = fopen(fname, "w");
-  if (pe_rank == 0) printf("Writing STL file: %s\n", fname);
+    int rank;
+    MPI_Comm_rank(comm, &rank);
 
-  /* Write STL header */
-  fwrite(model->hdr, sizeof(char), STL_HDR_SIZE, fp);
+    /* Derived type for triangles */
+    MPI_Type_contiguous(sizeof(stl_triangle_t), MPI_BYTE, &MPI_STL_TRI);
+    MPI_Type_commit(&MPI_STL_TRI);
 
-  /* Write number of triangles */
-  fwrite(&model->n_tri, sizeof(uint32_t), 1, fp);
+    /* Open collectively */
+    MPI_File_open(comm, fname,
+                  MPI_MODE_CREATE | MPI_MODE_WRONLY,
+                  MPI_INFO_NULL, &fh);
 
-  /* Write all triangles */
-  fwrite(model->tri, sizeof(stl_triangle_t), model->n_tri, fp);
+    /* 1. Write header */
+    MPI_File_write_at_all(fh, 0,
+                          model->hdr, STL_HDR_SIZE,
+                          MPI_BYTE, MPI_STATUS_IGNORE);
 
-  fclose(fp);
-  if (pe_rank == 0) printf("Done\n");
+    /* 2. Write triangle count */
+    MPI_File_write_at_all(fh, STL_HDR_SIZE,
+                          &model->n_tri, 1,
+                          MPI_UNSIGNED, MPI_STATUS_IGNORE);
+
+    /* 3. Write all triangles */
+    MPI_Offset tri_offset = STL_HDR_SIZE + sizeof(uint32_t);
+
+    MPI_File_write_at_all(fh, tri_offset,
+                          model->tri,
+                          model->n_tri,
+                          MPI_STL_TRI,
+                          MPI_STATUS_IGNORE);
+
+    MPI_File_close(&fh);
+    MPI_Type_free(&MPI_STL_TRI);
+
+    if (rank == 0) printf("Done\n");
 }
 
 int main(int argc, char **argv) {
