@@ -49,12 +49,10 @@ int main() {
     const int steps = 20000;
 
     for (int n = 0; n < steps; n++) {
-
         // interior update
         for (int i = 1; i < N_x - 1; i++) {
             for (int j = 1; j < N_y - 1; j++) {
-                f_new[i][j] =
-                    f[i][j]
+                f_new[i][j] = f[i][j]
                     + rx * (f[i+1][j] - 2.0*f[i][j] + f[i-1][j])
                     + ry * (f[i][j+1] - 2.0*f[i][j] + f[i][j-1]);
             }
@@ -62,12 +60,12 @@ int main() {
 
         // boundaries = zero Dirichlet
         for (int i = 0; i < N_x; i++) {
-            f_new[i][0]     = 0.0;
-            f_new[i][N_y-1]  = 0.0;
+            f_new[i][0] = 0.0;
+            f_new[i][N_y-1] = 0.0;
         }
         for (int j = 0; j < N_y; j++) {
-            f_new[0][j]     = 0.0;
-            f_new[N_x-1][j]  = 0.0;
+            f_new[0][j] = 0.0;
+            f_new[N_x-1][j] = 0.0;
         }
 
         // swap arrays

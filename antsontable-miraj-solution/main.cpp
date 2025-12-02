@@ -13,8 +13,8 @@ int main() {
     size_t seed = 120;
 
     // dynamically allocated arrays
-    int* ants      = new int[length * length];
-    int* new_ants  = new int[length * length];
+    int* ants = new int[length * length];
+    int* new_ants = new int[length * length];
     int* partition = new int[nmoves];
 
     std::mt19937 engine(seed);
